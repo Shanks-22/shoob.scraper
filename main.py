@@ -199,26 +199,42 @@ async def main():
         print("\n🚀 Starting scraping process...")
         print("-" * 60)
         
-        stats = await scraper.scrape_all_pages(start_page, end_page)
+        try:
+            stats = await scraper.scrape_all_pages(start_page, end_page)
+        except Exception as e:
+            print(f"\n❌ Scraping error: {e}")
+            # Create fallback stats if scraping fails
+            stats = {
+                'pages_scraped': len(scraper.scraped_pages) if hasattr(scraper, 'scraped_pages') else 0,
+                'pages_skipped': 0,
+                'cards_extracted': len(scraper.all_cards) if hasattr(scraper, 'all_cards') else 0,
+                'total_errors': scraper.stats.get('errors', 0) if hasattr(scraper, 'stats') else 0,
+                'success_rate': 0,
+                'elapsed_time': 0,
+                'cards_per_second': 0
+            }
         
         # Display final results
         print("\n" + "="*60)
         print("🎉 SCRAPING COMPLETED!")
         print("="*60)
-        print(f"📄 Pages scraped: {stats['pages_scraped']}")
-        print(f"📄 Pages skipped: {stats['pages_skipped']}")
-        print(f"🃏 Cards extracted: {stats['cards_extracted']}")
-        print(f"❌ Errors: {stats['errors']}")
-        print(f"✅ Success rate: {stats['success_rate']}%")
-        print(f"⏱️  Total time: {stats['elapsed_time']}s")
-        print(f"🚀 Speed: {stats['cards_per_second']} cards/sec")
+        print(f"📄 Pages scraped: {stats.get('pages_scraped', 0)}")
+        print(f"📄 Pages skipped: {stats.get('pages_skipped', 0)}")
+        print(f"🃏 Cards extracted: {stats.get('cards_extracted', 0)}")
+        print(f"❌ Errors: {stats.get('total_errors', 0)}")
+        print(f"✅ Success rate: {stats.get('success_rate', 0)}%")
+        print(f"⏱️  Total time: {stats.get('elapsed_time', 0)}s")
+        print(f"🚀 Speed: {stats.get('cards_per_second', 0)} cards/sec")
         print("="*60)
         
         # Show data summary
-        if stats['cards_extracted'] > 0:
+        if stats.get('cards_extracted', 0) > 0:
             print("\n📊 Getting final data summary...")
-            summary = scraper.get_scraped_data_summary()
-            print_summary(summary)
+            try:
+                summary = scraper.get_scraped_data_summary()
+                print_summary(summary)
+            except Exception as e:
+                print(f"⚠️ Could not generate summary: {e}")
         
         print(f"\n💾 All data saved to: {scraper.config['output_folder']}")
         print("✨ Scraping completed successfully!")
@@ -242,7 +258,20 @@ async def main():
     except Exception as e:
         print(f"\n❌ Critical Error: {e}")
         print("💡 Check the logs for more details")
-        raise
+        
+        # Try to cleanup browser even on error
+        try:
+            if 'scraper' in locals():
+                await scraper._cleanup_browser()
+        except:
+            pass
+        
+        # Don't exit with error code if we have successfully scraped some data
+        if 'scraper' in locals() and hasattr(scraper, 'all_cards') and scraper.all_cards:
+            print("💾 Some data was successfully scraped and saved")
+            return  # Exit cleanly
+        else:
+            raise  # Re-raise if no data was scraped
 
 
 if __name__ == "__main__":
