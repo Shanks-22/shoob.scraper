@@ -28,7 +28,7 @@ SCRAPING_CONFIG = {
     "network_settle_time": 0.5,    # Wait for network to settle after navigation
     
     # Output settings
-    "output_file": "shoob_cards_advanced.json",
+    "output_file": "data.json",
     "output_folder": "output",
     "pretty_print": True,
     "include_metadata": True,
@@ -36,7 +36,7 @@ SCRAPING_CONFIG = {
     
     # Resume functionality
     "enable_resume": True,
-    "resume_file": "scraping_progress_advanced.json",
+    "resume_file": "process.json",
     
     # Performance settings
     "retry_attempts": 3,
