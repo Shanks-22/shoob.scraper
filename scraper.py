@@ -818,57 +818,51 @@ class AdvancedShoobCardScraper:
         }
     
     def _save_final_output(self) -> Path:
-        """Save all cards to a single output file."""
-        output_file = OUTPUT_DIR / self.config["output_file"]
+        """Save cards to data.json and progress to process.json."""
+        data_file = OUTPUT_DIR / "data.json"
+        process_file = OUTPUT_DIR / "process.json"
         
         try:
-            # Calculate final statistics
-            final_stats = self._calculate_statistics()
-            
-            # Create comprehensive output data
-            output_data = {
-                "scrape_info": {
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "scraper_version": SCRAPER_VERSION,
-                    "scraper_type": "advanced_event_driven",
-                    "total_cards": len(self.all_cards),
-                    "source": self.urls["base_url"],
-                    "method": "smart_waiting_browser_automation",
-                    "session_statistics": final_stats,
-                    "configuration": {
-                        "pages_range": f"{self.config.get('start_page', 1)}-{self.config.get('end_page', 'auto')}",
-                        "max_wait_timeout": self.config["max_wait_timeout"],
-                        "smart_waiting": True,
-                        "live_save": self.config["live_save"],
-                        "resume_enabled": self.config["enable_resume"]
-                    },
-                    "data_fields": [
-                        "card_id", "card_url", "name", "tier", "character_source", 
-                        "series", "image_url", "high_res_image_url", "creator", 
-                        "card_maker", "description", "last_updated", "extraction_timestamp"
-                    ],
-                    "failed_cards": list(self.failed_card_ids) if self.failed_card_ids else []
-                },
-                "cards": self.all_cards
+            # Save simple data.json with just cards
+            data_output = {
+                "cards": self.all_cards,
+                "total": len(self.all_cards),
+                "last_updated": datetime.now(timezone.utc).isoformat()
             }
             
-            # Write to file
-            with open(output_file, 'w', encoding='utf-8') as f:
+            with open(data_file, 'w', encoding='utf-8') as f:
                 json.dump(
-                    output_data,
+                    data_output,
                     f,
                     ensure_ascii=False,
-                    indent=2 if self.config["pretty_print"] else None,
-                    sort_keys=True
+                    indent=2 if self.config["pretty_print"] else None
                 )
             
-            self.logger.info(f"💾 Final output saved to: {output_file}")
-            self.logger.info(f"📊 Total cards in file: {len(self.all_cards)}")
+            # Save process.json with progress tracking
+            process_output = {
+                "scraped_pages": sorted(list(self.scraped_pages)),
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+                "total_cards": len(self.all_cards),
+                "scraper_version": SCRAPER_VERSION,
+                "session_statistics": self._calculate_statistics()
+            }
             
-            return output_file
+            with open(process_file, 'w', encoding='utf-8') as f:
+                json.dump(
+                    process_output,
+                    f,
+                    ensure_ascii=False,
+                    indent=2 if self.config["pretty_print"] else None
+                )
+            
+            self.logger.info(f"💾 Data saved to: {data_file}")
+            self.logger.info(f"📊 Progress saved to: {process_file}")
+            self.logger.info(f"🃏 Total cards: {len(self.all_cards)}")
+            
+            return data_file
             
         except Exception as e:
-            self.logger.error(f"❌ Error saving final output: {e}")
+            self.logger.error(f"❌ Error saving output: {e}")
             raise
     
     async def scrape_all_pages(self, start_page: Optional[int] = None, end_page: Optional[int] = None) -> Dict[str, Any]:
