@@ -74,26 +74,13 @@ jobs:
         if: steps.pages.outputs.skip != 'true'
         id: verify
         run: |
-          if [ -f "output/shoob_cards_advanced.json" ]; then
-            python3 -c "
-import json, os
-with open('output/shoob_cards_advanced.json', 'r') as f: data = json.load(f)
-cards = data.get('cards', [])
-with open('output/data.json', 'w') as f: json.dump({'cards': cards, 'total': len(cards)}, f, indent=2)
-proc = {'scraped_pages': []}
-if os.path.exists('output/process.json'):
-    try:
-        with open('output/process.json', 'r') as f: proc = json.load(f)
-    except: pass
-pages = set(proc.get('scraped_pages', []))
-for p in range(${{ steps.pages.outputs.start }}, ${{ steps.pages.outputs.end }} + 1): pages.add(p)
-proc['scraped_pages'] = sorted(list(pages))
-proc['last_updated'] = data.get('scrape_info', {}).get('timestamp', '')
-proc['total_cards'] = len(cards)
-with open('output/process.json', 'w') as f: json.dump(proc, f, indent=2)
-"
-            echo "card_count=$(python3 -c \"import json; print(json.load(open('output/data.json'))['total'])\")" >> $GITHUB_OUTPUT
+          if [ -f "output/data.json" ] && [ -f "output/process.json" ]; then
+            echo "Output files verified"
+            CARD_COUNT=$(python3 -c "import json; data=json.load(open('output/data.json')); print(data.get('total', 0))" 2>/dev/null || echo "0")
+            echo "card_count=$CARD_COUNT" >> $GITHUB_OUTPUT
+            echo "Total cards: $CARD_COUNT"
           else
+            echo "Required output files missing"
             exit 1
           fi
 
