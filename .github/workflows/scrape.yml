@@ -1,9 +1,10 @@
-name: Shoob Scraper
+name: Shoob - manji
 
 permissions:
   contents: write
 
 on:
+  # Manual trigger (your tested version)
   workflow_dispatch:
     inputs:
       start:
@@ -14,6 +15,10 @@ on:
         description: "End page"
         required: true
         default: "100"
+  
+  # Simple 24/7 operation
+  schedule:
+    - cron: '0 */6 * * *'  # Every 6 hours
 
 jobs:
   scrape:
@@ -34,14 +39,52 @@ jobs:
           pip install -r requirements.txt
           playwright install chromium
 
+      - name: Determine pages to scrape
+        id: pages
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual run - use your inputs
+            START="${{ github.event.inputs.start }}"
+            END="${{ github.event.inputs.end }}"
+            echo "🎮 Manual: Pages $START to $END"
+          else
+            # Auto run - find next 50 pages
+            if [ -f "output/scraping_progress_advanced.json" ]; then
+              LAST=$(python3 -c "import json; data=json.load(open('output/scraping_progress_advanced.json')); pages=data.get('scraped_pages',[]); print(max(pages) if pages else 0)" 2>/dev/null || echo "0")
+              START=$((LAST + 1))
+            else
+              START=1
+            fi
+            
+            END=$((START + 49))  # 50 pages per auto run
+            
+            # Don't go past 2311
+            if [ $END -gt 2311 ]; then
+              END=2311
+            fi
+            
+            # Skip if already done
+            if [ $START -gt 2311 ]; then
+              echo "skip=true" >> $GITHUB_OUTPUT
+              echo "✅ All done!"
+              exit 0
+            fi
+            
+            echo "🤖 Auto: Pages $START to $END"
+          fi
+          
+          echo "start=$START" >> $GITHUB_OUTPUT
+          echo "end=$END" >> $GITHUB_OUTPUT
+
       - name: Run scraper
+        if: steps.pages.outputs.skip != 'true'
         run: |
           python main.py \
-            --start ${{ github.event.inputs.start }} \
-            --end ${{ github.event.inputs.end }} \
+            --start ${{ steps.pages.outputs.start }} \
+            --end ${{ steps.pages.outputs.end }} \
             --resume
 
-      # 🔒 GUARANTEED SAVE (runs even if scraper fails)
+      # 🔒 GUARANTEED SAVE (your tested feature)
       - name: Upload output as artifact
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,12 +93,12 @@ jobs:
           path: output/
           retention-days: 90
 
-      # 📌 Commit only if scraper step succeeded
+      # 📌 Commit only if scraper succeeded (your tested feature)
       - name: Commit output
-        if: success()
+        if: success() && steps.pages.outputs.skip != 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add output/
-          git commit -m "Scraped pages ${{ github.event.inputs.start }}-${{ github.event.inputs.end }}" || echo "No changes"
+          git commit -m "Scraped pages ${{ steps.pages.outputs.start }}-${{ steps.pages.outputs.end }}" || echo "No changes"
           git push
