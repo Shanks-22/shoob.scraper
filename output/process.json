@@ -1,0 +1,26 @@
+{
+  "scraped_pages": [
+    1
+  ],
+  "last_updated": "2025-12-26T16:18:58.406939+00:00",
+  "total_cards": 15,
+  "scraper_version": "1.0.0-advanced",
+  "session_statistics": {
+    "session_id": "advanced_session_1766765852",
+    "pages_scraped": 1,
+    "pages_skipped": 0,
+    "cards_extracted": 15,
+    "total_errors": 0,
+    "success_rate": 100.0,
+    "elapsed_time": 86.22,
+    "cards_per_second": 0.17,
+    "pages_per_minute": 0.7,
+    "average_cards_per_page": 15.0,
+    "wait_time_analytics": {
+      "total_wait_time": 1.23,
+      "average_page_load": 4.03,
+      "average_card_load": 5.35,
+      "wait_efficiency": 98.6
+    }
+  }
+}
