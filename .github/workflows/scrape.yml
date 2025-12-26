@@ -4,7 +4,6 @@ permissions:
   contents: write
 
 on:
-  # Manual trigger (your tested version)
   workflow_dispatch:
     inputs:
       start:
@@ -15,10 +14,8 @@ on:
         description: "End page"
         required: true
         default: "100"
-  
-  # Simple 24/7 operation
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+    - cron: '0 */6 * * *'
 
 jobs:
   scrape:
@@ -28,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,66 +38,82 @@ jobs:
           pip install -r requirements.txt
           playwright install chromium
 
-      - name: Determine pages to scrape
+      - name: Read progress state
         id: pages
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            # Manual run - use your inputs
-            START="${{ github.event.inputs.start }}"
-            END="${{ github.event.inputs.end }}"
-            echo "🎮 Manual: Pages $START to $END"
-          else
-            # Auto run - find next 50 pages
-            if [ -f "output/scraping_progress_advanced.json" ]; then
-              LAST=$(python3 -c "import json; data=json.load(open('output/scraping_progress_advanced.json')); pages=data.get('scraped_pages',[]); print(max(pages) if pages else 0)" 2>/dev/null || echo "0")
-              START=$((LAST + 1))
-            else
-              START=1
-            fi
-            
-            END=$((START + 49))  # 50 pages per auto run
-            
-            # Don't go past 2311
-            if [ $END -gt 2311 ]; then
-              END=2311
-            fi
-            
-            # Skip if already done
-            if [ $START -gt 2311 ]; then
-              echo "skip=true" >> $GITHUB_OUTPUT
-              echo "✅ All done!"
-              exit 0
-            fi
-            
-            echo "🤖 Auto: Pages $START to $END"
+          mkdir -p output
+          LAST_SCRAPED=0
+          if [ -f "output/process.json" ]; then
+            LAST_SCRAPED=$(python3 -c "import json; f=open('output/process.json'); d=json.load(f); p=d.get('scraped_pages', []); print(max(p) if p else 0)" 2>/dev/null || echo "0")
           fi
           
-          echo "start=$START" >> $GITHUB_OUTPUT
-          echo "end=$END" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            USER_START="${{ github.event.inputs.start }}"
+            USER_END="${{ github.event.inputs.end }}"
+            START=$(( LAST_SCRAPED + 1 > USER_START ? LAST_SCRAPED + 1 : USER_START ))
+            END=$USER_END
+          else
+            START=$((LAST_SCRAPED + 1))
+            END=$((START + 199))
+            [ $END -gt 2311 ] && END=2311
+          fi
+          
+          if [ $START -gt $END ] || [ $START -gt 2311 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "start=$START" >> $GITHUB_OUTPUT
+            echo "end=$END" >> $GITHUB_OUTPUT
+          fi
 
       - name: Run scraper
         if: steps.pages.outputs.skip != 'true'
         run: |
-          python main.py \
-            --start ${{ steps.pages.outputs.start }} \
-            --end ${{ steps.pages.outputs.end }} \
-            --resume
+          python main.py --start ${{ steps.pages.outputs.start }} --end ${{ steps.pages.outputs.end }} --resume
 
-      # 🔒 GUARANTEED SAVE (your tested feature)
-      - name: Upload output as artifact
+      - name: Verify output
+        if: steps.pages.outputs.skip != 'true'
+        id: verify
+        run: |
+          if [ -f "output/shoob_cards_advanced.json" ]; then
+            python3 -c "
+import json, os
+with open('output/shoob_cards_advanced.json', 'r') as f: data = json.load(f)
+cards = data.get('cards', [])
+with open('output/data.json', 'w') as f: json.dump({'cards': cards, 'total': len(cards)}, f, indent=2)
+proc = {'scraped_pages': []}
+if os.path.exists('output/process.json'):
+    try:
+        with open('output/process.json', 'r') as f: proc = json.load(f)
+    except: pass
+pages = set(proc.get('scraped_pages', []))
+for p in range(${{ steps.pages.outputs.start }}, ${{ steps.pages.outputs.end }} + 1): pages.add(p)
+proc['scraped_pages'] = sorted(list(pages))
+proc['last_updated'] = data.get('scrape_info', {}).get('timestamp', '')
+proc['total_cards'] = len(cards)
+with open('output/process.json', 'w') as f: json.dump(proc, f, indent=2)
+"
+            echo "card_count=$(python3 -c \"import json; print(json.load(open('output/data.json'))['total'])\")" >> $GITHUB_OUTPUT
+          else
+            exit 1
+          fi
+
+      - name: Upload artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: shoob-data-${{ github.run_number }}
+          name: shoob-data-run-${{ github.run_number }}
           path: output/
-          retention-days: 90
+          retention-days: 7
 
-      # 📌 Commit only if scraper succeeded (your tested feature)
-      - name: Commit output
+      - name: Commit and Push
         if: success() && steps.pages.outputs.skip != 'true'
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add output/
-          git commit -m "Scraped pages ${{ steps.pages.outputs.start }}-${{ steps.pages.outputs.end }}" || echo "No changes"
-          git push
+          if ! git diff --staged --quiet; then
+            git commit -m "Scrape update: ${{ steps.pages.outputs.start }}-${{ steps.pages.outputs.end }}"
+            for i in {1..3}; do
+              git pull --rebase && git push && break || sleep 5
+            done
+          fi
